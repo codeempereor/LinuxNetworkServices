@@ -1,0 +1,148 @@
+/* =============================================================================
+ * 项目名称: Linux磁盘文件远程检索服务
+ * 文件名称: common.h
+ * 作    者: 三道渊
+ * 创建日期: 2026-03-29
+ * 最后修改: 2026-03-29
+ * 版    本: v1.0.0
+ * 适用平台: Linux x64
+ * 编译依赖: GCC, MySQL, pthread
+ * 功能描述:
+ *   1. 公共头文件，定义常量、结构体和函数声明
+ * 算法描述:
+ *   - 无
+ * 适用场景:
+ *   - 文件检索服务系统
+ * 版权声明: © 2026 三道渊. All rights reserved.
+ * 变更记录:
+ *   - 2026-03-29 三道渊: 初始化文件
+ * ============================================================================ */
+
+#ifndef COMMON_H
+#define COMMON_H
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <pthread.h>
+#include <regex.h>
+#include <dirent.h>
+#include <time.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <mysql/mysql.h>
+
+/* 常量定义 */
+#define SERVER_PORT 7777
+#define MAX_BUFFER_SIZE 4096
+#define MAX_PATH_LENGTH 1024
+#define MAX_FILENAME_LENGTH 256
+#define MAX_CLIENTS 20
+#define INDEX_UPDATE_INTERVAL 300  // 5分钟 = 300秒
+#define RECORD_RETENTION_DAYS 30
+#define LOG_FILE "/var/log/file_search.log"
+#define SEARCH_BASE_DIR "/home/"
+#define FORBIDDEN_PATHS "/root/,/proc/,/sys/,/dev/"
+
+/* 数据库配置 */
+#define DB_HOST "localhost"
+#define DB_USER "filesearch"
+#define DB_PASS "filesearch123"
+#define DB_NAME "file_search_db"
+
+/* 二叉树节点结构 */
+typedef struct TreeNode
+{
+    char filename[MAX_FILENAME_LENGTH];
+    char path[MAX_PATH_LENGTH];
+    off_t size;
+    time_t mtime;
+    struct TreeNode *left;
+    struct TreeNode *right;
+} TreeNode;
+
+/* 文件信息结构 */
+typedef struct FileInfo
+{
+    char filename[MAX_FILENAME_LENGTH];
+    char path[MAX_PATH_LENGTH];
+    off_t size;
+    time_t mtime;
+} FileInfo;
+
+/* 检索条件结构 */
+typedef struct SearchCondition
+{
+    int has_filename;
+    char filename[MAX_FILENAME_LENGTH];
+    int has_filename_like;
+    char filename_like[MAX_FILENAME_LENGTH];
+    int has_size_gt;
+    off_t size_gt;
+    int has_mtime_gt;
+    time_t mtime_gt;
+    int has_regex;
+    char regex_pattern[MAX_FILENAME_LENGTH];
+} SearchCondition;
+
+/* 检索结果结构 */
+typedef struct SearchResult
+{
+    FileInfo *files;
+    int count;
+    int capacity;
+} SearchResult;
+
+/* 全局变量声明 */
+extern TreeNode *g_file_index_root;
+extern pthread_mutex_t g_index_mutex;
+extern MYSQL *g_db_conn;
+
+/* 函数声明 - 文件索引模块 */
+TreeNode* create_tree_node(const char *filename, const char *path, off_t size, time_t mtime);
+TreeNode* insert_tree_node(TreeNode *root, TreeNode *new_node);
+void free_tree(TreeNode *root);
+TreeNode* search_tree(TreeNode *root, const char *filename);
+void traverse_tree(TreeNode *root, SearchResult *result, SearchCondition *cond);
+int build_file_index(const char *base_dir);
+void* index_update_thread(void *arg);
+
+/* 函数声明 - 数据库模块 */
+int db_init(void);
+void db_close(void);
+int db_insert_file_index(TreeNode *root);
+int db_insert_search_record(const char *client_ip, const char *search_cmd, int match_count);
+int db_search_files(SearchCondition *cond, SearchResult *result);
+int db_get_search_count(const char *filename);
+int db_clean_old_records(void);
+
+/* 函数声明 - 检索处理模块 */
+int parse_search_command(const char *cmd, SearchCondition *cond);
+int check_path_valid(const char *path);
+void search_files(SearchCondition *cond, SearchResult *result);
+void free_search_result(SearchResult *result);
+
+/* 函数声明 - 网络通信模块 */
+int server_init(void);
+void* client_handler(void *arg);
+int send_result(int sock, SearchResult *result);
+
+/* 函数声明 - 结果格式化模块 */
+void format_size(off_t size_bytes, char *output, size_t output_size);
+void format_time(time_t mtime, char *output, size_t output_size);
+void print_table_header(void);
+void print_table_row(const FileInfo *file);
+void print_table_footer(int total_count);
+
+/* 函数声明 - 工具函数 */
+void write_log(const char *format, ...);
+int daemonize(void);
+void signal_handler(int sig);
+
+#endif /* COMMON_H */
