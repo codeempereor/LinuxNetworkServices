@@ -12,8 +12,8 @@
  */
 #define DB_HOST "localhost"
 #define DB_USER "root"
-#define DB_PASSWORD ""
-#define DB_NAME "transfer_db"
+#define DB_PASSWORD "1"
+#define DB_NAME "file_transfer"
 
 /**
  * @brief 连接数据库
